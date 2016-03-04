@@ -1,0 +1,146 @@
+module org.opendolphin.frege.Dolphin where
+
+import Data.HashMap
+import frege.control.monad.State
+
+data Tag = Value | Label | Enabled | Visible | Editable | Optional
+derive Show Tag 
+
+data AttributeValue = IntVal Int Int | BoolVal Bool Bool | StringVal String String
+derive Show AttributeValue
+
+type IndexSet a = HashMap a ()                 -- in replacement of an immutable HashSet. "a" will be Long or String
+type IndexMap a = HashMap String (IndexSet a)  -- a multimap from various String keys to indexes 
+
+type Qualifier = Maybe String
+
+--- Get all indexes for a given key from an IndexMap, empty list if Nothing found
+indexesOf :: (IndexMap a) -> String -> [a]
+indexesOf multimap key = elements $ multimap.lookup key where
+    elements (Just indexSet) = HashMap.keys indexSet
+    elements Nothing = []
+    
+--- Adding a value under a key that may contain many values (= multimap).
+--- Values are unique like in a set but the collection of values is immutable.        
+protected addIndex :: Eq a => String -> a -> (IndexMap a) -> (IndexMap a)   
+protected addIndex key index multimap = multimap.insert key newSet where
+    newSet  = setLike $ multimap.lookup key
+    setLike (Just indexes) = indexes.insert index ()   
+    setLike Nothing        = singleton index ()     
+       
+protected removeIndex :: Eq a => String -> a -> (IndexMap a) -> (IndexMap a)   
+protected removeIndex key index multimap = if HashMap.size newSet == 0 then multimap.delete key else multimap.insert key newSet where
+    newSet  = setLike $ multimap.lookup key
+    setLike (Just indexes) = indexes.delete index    
+    setLike Nothing        = IndexSet.empty -- todo: think about "key not found" (we silently swallow missing keys atm)    
+
+data Attribute = Attr {
+    --id              :: Long, -- unique attribute id, system assigned // probably not needed since stored in table index
+    pmId            :: String,
+    propertyName    :: String,
+    tag             :: Tag,
+    value     :: AttributeValue, -- parts that might change // it would be nicer to express that both must have same ctor
+    --baseValue :: AttributeValue, 
+    qualifier :: Qualifier -- consistency constraint with (indexesOf dol.attrIdByQualifier)
+}
+derive Show Attribute
+
+data Dolphin = Dolphin {
+    !attrById           :: HashMap Long Attribute, -- the attribute "table", indexed by id
+    !attrIdsByQualifier :: IndexMap Long,          -- attr id values must be keys in attrById
+    !attrIdsByPmId      :: IndexMap Long,
+    !pmIdsByType        :: IndexMap String
+}
+
+-- when removing a pm by id we need to
+--  remove all its attributes, which in turn must remove the qualifiers
+--  remove it from pmIdsByType ? 
+--     no , when we remove by id, we leave the type alone
+--        what if we delete the last PM of a given type?
+--        what if we deletAllPmsByType?
+
+addAttribute :: Long -> Attribute -> State Dolphin () 
+addAttribute idx attr = State.modify update where
+    update dol = dol.{
+        attrById    <- insert idx attr, 
+        attrIdsByPmId <- addIndex attr.pmId idx, 
+        attrIdsByQualifier <- registerQualifier idx attr.qualifier
+    } 
+
+modifyQualifier :: Long -> Qualifier -> State Dolphin ()
+modifyQualifier attrId qualifier = do
+    State.modify _.{attrIdsByQualifier <- unregisterOldQualifier attrId qualifier} -- remove from qualifier index
+    State.modify _.{attrById <- adjust _.{qualifier = qualifier} attrId }          -- set qualifier value in attribute
+    State.modify _.{attrIdsByQualifier <- registerQualifier attrId qualifier}      -- add new qualifier to index
+    
+protected registerQualifier :: Long -> Qualifier -> (IndexMap Long) -> (IndexMap Long)
+protected registerQualifier attrId (Just qualifier) = addIndex qualifier attrId
+protected registerQualifier attrId Nothing = id     
+     
+protected unregisterOldQualifier :: Long -> Qualifier -> (IndexMap Long) -> (IndexMap Long)
+protected unregisterOldQualifier attrId (Just oldQualifier) = removeIndex oldQualifier attrId 
+protected unregisterOldQualifier attrId Nothing = id -- a Nothing is not registered so there is nothing to unregister
+
+
+attrUpdate :: Long -> (AttributeValue -> AttributeValue) -> State Dolphin ()
+attrUpdate attrId update = State.modify _.{attrById <- adjust _.{value <- update} attrId }
+
+modifyAttribute :: Long -> AttributeValue -> State Dolphin ()
+modifyAttribute attrId newAttributeValue = attrUpdate attrId $ \_ -> newAttributeValue
+
+setValue :: AttributeValue -> AttributeValue -> AttributeValue
+setValue (IntVal    oldBase _) (IntVal    _ newValue) = IntVal    oldBase newValue
+setValue (BoolVal   oldBase _) (BoolVal   _ newValue) = BoolVal   oldBase newValue
+setValue (StringVal oldBase _) (StringVal _ newValue) = StringVal oldBase newValue
+setValue _ _ = error $ "cannot set value on non-matching attribute types."
+
+setBaseValue :: AttributeValue -> AttributeValue -> AttributeValue
+setBaseValue (IntVal    _ oldValue) (IntVal    newBase _) = IntVal    newBase oldValue
+setBaseValue (BoolVal   _ oldValue) (BoolVal   newBase _) = BoolVal   newBase oldValue
+setBaseValue (StringVal _ oldValue) (StringVal newBase _) = StringVal newBase oldValue
+setBaseValue _ _ = error $ "cannot set base value on non-matching attribute types."
+
+modifyValue :: Long -> AttributeValue -> State Dolphin ()
+modifyValue attrId newAttributeValue = attrUpdate attrId $ \oldAttributeValue -> setValue oldAttributeValue newAttributeValue
+-- update qualified attributes and update listeners (value, dirty) must be done by the caller
+
+modifyBaseValue :: Long -> AttributeValue -> State Dolphin ()
+modifyBaseValue attrId newBaseValue = attrUpdate attrId $ \oldBaseValue -> setBaseValue oldBaseValue newBaseValue
+-- update qualified attributes and update listeners (baseValue, dirty)  must be done by the caller
+
+addPmByType :: String -> String -> State Dolphin ()
+addPmByType pmType pmId = State.modify _.{pmIdsByType <- addIndex pmType pmId}      
+   
+findAttrIdsByQualifier :: Dolphin -> String -> [Long]
+findAttrIdsByQualifier dol qual = indexesOf dol.attrIdsByQualifier qual 
+
+findAttrsByQualifier :: Dolphin -> String -> [Attribute] 
+findAttrsByQualifier dol qual = catMaybes $ map (dol.attrById.lookup) (findAttrIdsByQualifier dol qual) 
+
+-- not quite sure whether we need this
+findQualifierByAttrId :: Dolphin -> Long -> Qualifier
+findQualifierByAttrId dol attrId = dol.attrById.lookup attrId >>= _.qualifier
+
+with start f = State.execState f start
+
+main _ = do
+    -- start with an empty dolphin
+    dolphin = Dolphin empty empty empty empty
+    endDolphin = with dolphin do 
+        for [0..1000] $ \i -> do 
+            -- create PM0 with a thousand qualified attributes
+            addAttribute i.fromInt $ Attr "PM0" "name" Value (IntVal i i) Nothing
+            modifyQualifier (Long.fromInt i) (Just ("qual" ++ show i))            
+        for [0..9] $ \i -> do
+            addAttribute (i.fromInt+10) $ Attr "PM1" "name" Value (IntVal i i) Nothing
+            modifyQualifier (Long.fromInt i+10) (Just ("qual" ++ show i))
+        addPmByType "allType" "PM0"
+        addPmByType "allType" "PM1"
+        modifyValue     1 (IntVal undefined 4077)
+        modifyBaseValue 1 (IntVal 4077 undefined)
+
+    for [1..2] $ \i -> println $ findAttrsByQualifier endDolphin ("qual" ++ show i)
+    for (indexesOf endDolphin.pmIdsByType "allType") $ \pmId -> do
+        print $ pmId ++ ": "
+        println $ length $ indexesOf endDolphin.attrIdsByPmId pmId
+    println "done"
