@@ -1,0 +1,19 @@
+module org.opendolphin.frege.DolphinTest where
+
+import org.opendolphin.frege.Dolphin
+
+import Test.QuickCheck
+
+dummy = once true
+
+startDolphin = Dolphin empty empty empty empty
+
+onePmAttrDolphin ∷ Int → Dolphin 
+onePmAttrDolphin i = with startDolphin do 
+    op = addAttribute (toLongIndex i) $ Attr "PM_KEY" "myPropName" Value (Just (IntVal 0 0)) (Just "ATTR_QUALIFIER")
+    sequence $ map (const op) [1..i+1]
+    
+    
+foundByQualifier = property $ \key -> findAttrIdsByQualifier (onePmAttrDolphin key) "ATTR_QUALIFIER" == map toLongIndex [key]
+
+notFoundByQualifier = property $ \key -> findAttrIdsByQualifier (onePmAttrDolphin key) "no such qualifier" == []
