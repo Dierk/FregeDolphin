@@ -11,6 +11,7 @@ derive Show Tag
 data AttributeData = IntVal    Int    Int     -- baseValue value 
                    | BoolVal   Bool   Bool 
                    | StringVal String String
+derive Eq   AttributeData                   
 derive Show AttributeData
 
 -- An Attribute may have no data, eg.
@@ -18,7 +19,7 @@ derive Show AttributeData
 type AttributeValue = Maybe AttributeData
 
 data Index = LongIndex Long | StringIndex String
-derive Eq Index
+derive Eq   Index
 derive Show Index
 
 type IndexSet = HashMap Index ()         -- in replacement of an immutable HashSet
@@ -102,7 +103,9 @@ attrUpdate attrId update = State.modify _.{attrById <- adjust _.{value <- update
 setAttribute :: Index -> AttributeValue -> State Dolphin ()
 setAttribute attrId newAttributeValue = attrUpdate attrId $ \_ -> newAttributeValue
 
-setValue :: AttributeValue -> AttributeValue -> AttributeValue
+setValue :: AttributeValue -- old value
+         -> AttributeValue -- new value
+         -> AttributeValue -- updated value
 setValue (Just (IntVal    oldBase _)) (Just (IntVal    _ newValue)) = Just (IntVal    oldBase newValue)
 setValue (Just (BoolVal   oldBase _)) (Just (BoolVal   _ newValue)) = Just (BoolVal   oldBase newValue)
 setValue (Just (StringVal oldBase _)) (Just (StringVal _ newValue)) = Just (StringVal oldBase newValue)

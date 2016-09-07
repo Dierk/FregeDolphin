@@ -36,5 +36,14 @@ foundByModifiedQualifier = property $ \key ->
 noMoreOldQualifierAfterModification = property $ \key ->     
     findAttrIdsByQualifier (dolphinWithUpdatedQualifier key) initialQualifier == []
     
+    
+originalValue = property $ \key -> 
+    ((onePmAttrDolphin key).attrById.lookup (toLongIndex key) >>= _.value) == Just (IntVal 0 0)
+
+dolphinWithUpdatedValue key value = with (onePmAttrDolphin key) do
+	modifyValue (toLongIndex key) (Just (IntVal 0 value))
+
+modifiedValue = property $ \key \value -> 
+    ((dolphinWithUpdatedValue key value).attrById.lookup (toLongIndex key) >>= _.value) == Just (IntVal 0 value)
 
                 
