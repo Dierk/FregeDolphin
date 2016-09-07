@@ -8,11 +8,13 @@ derive Show Tag
 
 -- we could add RefVal String for foreign keys or selections, which have no base value.
 -- this could be used to e.g. check whether a PM of that id actually exists.
-data AttributeData = IntVal Int Int | BoolVal Bool Bool | StringVal String String
+data AttributeData = IntVal    Int    Int     -- baseValue value 
+                   | BoolVal   Bool   Bool 
+                   | StringVal String String
 derive Show AttributeData
 
--- this might be a bad idea. What should it even mean that an Attribute has no data?
--- A selection attribute might not select anything and hence has no value. But then, why is it forced to also have no base?
+-- An Attribute may have no data, eg.
+-- a selection attribute might not select anything and hence has no value.
 type AttributeValue = Maybe AttributeData
 
 data Index = LongIndex Long | StringIndex String
@@ -28,7 +30,7 @@ type Qualifier = Maybe String
 indexesOf :: IndexMap -> String -> [Index]
 indexesOf multimap key = elements $ multimap.lookup key where
     elements (Just indexSet) = HashMap.keys indexSet
-    elements Nothing = []
+    elements Nothing         = []
     
 --- Adding a value under a key that may contain many values (= multimap).
 --- Values are unique like in a set but the collection of values is immutable.        
@@ -80,10 +82,10 @@ addAttribute idx attr = State.modify update where
     } 
 
 modifyQualifier :: Index -> Qualifier -> State Dolphin ()
-modifyQualifier attrId qualifier = do
-    State.modify _.{attrIdsByQualifier <- unregisterOldQualifier attrId qualifier} -- remove from qualifier index
-    State.modify _.{attrById <- adjust _.{qualifier = qualifier} attrId }          -- set qualifier value in attribute
-    State.modify _.{attrIdsByQualifier <- registerQualifier attrId qualifier}      -- add new qualifier to index
+modifyQualifier attrId newQualifier = do
+    State.modify $ \dol -> dol.{attrIdsByQualifier <- unregisterOldQualifier attrId (findQualifierByAttrId dol attrId)} -- remove from qualifier index
+    State.modify _.{attrById <- adjust _.{qualifier = newQualifier} attrId }          -- set qualifier value in attribute
+    State.modify _.{attrIdsByQualifier <- registerQualifier attrId newQualifier}      -- add new qualifier to index
     
 protected registerQualifier :: Index -> Qualifier -> IndexMap -> IndexMap
 protected registerQualifier attrId (Just qualifier) = addIndex qualifier attrId

@@ -36,6 +36,13 @@ fregeDoc {
 	module  = "$buildDir/classes/main" // should become default
 }
 
+compileFrege {
+	target = "1.7"
+}
+compileTestFrege {
+	target = "1.7"
+}
+
 //fregeQuickCheck {
 //    help = true          // default: false
 //    listAvailable = true // default: false // true will not run the tests

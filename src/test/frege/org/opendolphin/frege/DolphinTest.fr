@@ -6,14 +6,35 @@ import Test.QuickCheck
 
 dummy = once true
 
+initialQualifier  = "initial qualifier"
+noSuchQualifier   = "no such qualifier"
+modifiedQualifier = "modified qualifier"
+
 startDolphin = Dolphin empty empty empty empty
 
+-- create one PM with one Attribute and fixed value and qualifier at the provided key
 onePmAttrDolphin ∷ Int → Dolphin 
-onePmAttrDolphin i = with startDolphin do 
-    op = addAttribute (toLongIndex i) $ Attr "PM_KEY" "myPropName" Value (Just (IntVal 0 0)) (Just "ATTR_QUALIFIER")
-    sequence $ map (const op) [1..i+1]
+onePmAttrDolphin key = with startDolphin do 
+    zero = Just $ IntVal 0 0
+    qual = Just initialQualifier
+    attr = Attr "PM_KEY" "myPropName" Value zero qual
+    addAttribute (toLongIndex key) attr
     
     
-foundByQualifier = property $ \key -> findAttrIdsByQualifier (onePmAttrDolphin key) "ATTR_QUALIFIER" == map toLongIndex [key]
+foundByQualifier    = property $ \key -> 
+    findAttrIdsByQualifier (onePmAttrDolphin key) initialQualifier    == [toLongIndex key]
 
-notFoundByQualifier = property $ \key -> findAttrIdsByQualifier (onePmAttrDolphin key) "no such qualifier" == []
+notFoundByQualifier = property $ \key -> 
+    findAttrIdsByQualifier (onePmAttrDolphin key) noSuchQualifier == []
+
+dolphinWithUpdatedQualifier key = with (onePmAttrDolphin key) do
+    modifyQualifier (toLongIndex key) (Just modifiedQualifier)
+
+foundByModifiedQualifier = property $ \key -> 
+    findAttrIdsByQualifier (dolphinWithUpdatedQualifier key) modifiedQualifier == [toLongIndex key]
+    
+noMoreOldQualifierAfterModification = property $ \key ->     
+    findAttrIdsByQualifier (dolphinWithUpdatedQualifier key) initialQualifier == []
+    
+
+                

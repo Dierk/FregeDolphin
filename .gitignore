@@ -2,4 +2,4 @@ out
 target
 build
 **/cache.*
-*.bin
+bin
