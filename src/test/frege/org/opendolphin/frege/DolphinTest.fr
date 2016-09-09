@@ -9,17 +9,19 @@ dummy = once true
 initialQualifier  = "initial qualifier"
 noSuchQualifier   = "no such qualifier"
 modifiedQualifier = "modified qualifier"
+zero              = Just $ IntVal 0 0
 
 startDolphin = Dolphin empty empty empty empty
 
 -- create one PM with one Attribute and fixed value and qualifier at the provided key
 onePmAttrDolphin ∷ Int → Dolphin 
 onePmAttrDolphin key = with startDolphin do 
-    zero = Just $ IntVal 0 0
     qual = Just initialQualifier
     attr = Attr "PM_KEY" "myPropName" Value zero qual
     addAttribute (toLongIndex key) attr
     
+valueByAttrId :: Dolphin -> Int -> AttributeValue      
+valueByAttrId dolphin key = dolphin.attrById.lookup (toLongIndex key) >>= _.value       
     
 foundByQualifier    = property $ \key -> 
     findAttrIdsByQualifier (onePmAttrDolphin key) initialQualifier    == [toLongIndex key]
@@ -35,15 +37,18 @@ foundByModifiedQualifier = property $ \key ->
     
 noMoreOldQualifierAfterModification = property $ \key ->     
     findAttrIdsByQualifier (dolphinWithUpdatedQualifier key) initialQualifier == []
+   
     
-    
-originalValue = property $ \key -> 
-    ((onePmAttrDolphin key).attrById.lookup (toLongIndex key) >>= _.value) == Just (IntVal 0 0)
+originalValue  = property isZero where
+    isZero key = valueByAttrId (onePmAttrDolphin key) key == zero
 
-dolphinWithUpdatedValue key value = with (onePmAttrDolphin key) do
-	modifyValue (toLongIndex key) (Just (IntVal 0 value))
+modifiedValue = property newValue where
+    newValue key value = valueByAttrId (updated key value) key == Just (IntVal 0 value)
+    updated  key value = with (onePmAttrDolphin key) do
+	    modifyValue (toLongIndex key) (Just (IntVal 1 value))
 
-modifiedValue = property $ \key \value -> 
-    ((dolphinWithUpdatedValue key value).attrById.lookup (toLongIndex key) >>= _.value) == Just (IntVal 0 value)
-
+modifiedBaseValue = property newBase where
+    newBase key value = valueByAttrId (updated key value) key == Just (IntVal value 0)
+    updated key value = with (onePmAttrDolphin key) do
+        modifyBaseValue (toLongIndex key) (Just (IntVal value 1))
                 
