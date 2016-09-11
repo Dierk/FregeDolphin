@@ -9,7 +9,7 @@ dummy = once true
 initialQualifier  = "initial qualifier"
 noSuchQualifier   = "no such qualifier"
 modifiedQualifier = "modified qualifier"
-zero              = Just $ IntVal 0 0
+zeroValue         = Just $ IntVal 0 0
 
 startDolphin = Dolphin empty empty empty empty
 
@@ -17,7 +17,7 @@ startDolphin = Dolphin empty empty empty empty
 onePmAttrDolphin ∷ Int → Dolphin 
 onePmAttrDolphin key = with startDolphin do 
     qual = Just initialQualifier
-    attr = Attr "PM_KEY" "myPropName" Value zero qual
+    attr = Attr "PM_KEY" "myPropName" Value zeroValue qual
     addAttribute (toLongIndex key) attr
     
 valueByAttrId :: Dolphin -> Int -> AttributeValue      
@@ -40,15 +40,15 @@ noMoreOldQualifierAfterModification = property $ \key ->
    
     
 originalValue  = property isZero where
-    isZero key = valueByAttrId (onePmAttrDolphin key) key == zero
+    isZero key = valueByAttrId (onePmAttrDolphin key) key == zeroValue
 
 modifiedValue = property newValue where
     newValue key value = valueByAttrId (updated key value) key == Just (IntVal 0 value)
     updated  key value = with (onePmAttrDolphin key) do
-	    modifyValue (toLongIndex key) (Just (IntVal 1 value))
+	    modifyValue (toLongIndex key) (Just (IntVal 1 value)) -- note: the base value is not copied
 
 modifiedBaseValue = property newBase where
     newBase key value = valueByAttrId (updated key value) key == Just (IntVal value 0)
     updated key value = with (onePmAttrDolphin key) do
-        modifyBaseValue (toLongIndex key) (Just (IntVal value 1))
+        modifyBaseValue (toLongIndex key) (Just (IntVal value 1)) -- note: the value is not copied
                 
